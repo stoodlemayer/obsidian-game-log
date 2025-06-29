@@ -1,4 +1,4 @@
-import { Plugin, TFile, Notice, App, Modal } from 'obsidian';
+import { Plugin, TFile, TFolder, Notice, App, Modal } from 'obsidian';
 import { GameLogSettingTab } from './settings';
 import { GameCreationModal } from './gameCreationModal';
 import { GameLibraryView, GAME_LIBRARY_VIEW_TYPE } from './gameLibraryView';
@@ -483,7 +483,7 @@ export default class GameLogPlugin extends Plugin {
         }> = [];
         
         // Fixed the typing issue here
-        if (sessionFiles && 'children' in sessionFiles && Array.isArray(sessionFiles.children)) {
+        if (sessionFiles instanceof TFolder) {
             for (const sessionFile of sessionFiles.children) {
                 if (sessionFile instanceof TFile && 
                     !sessionFile.name.includes('_current_session_') && 
@@ -698,8 +698,8 @@ ${finalThoughts || 'No final thoughts recorded.'}
             // Get all playthroughs for this game
             const playthroughsFolder = `${this.settings.gamesFolder}/${gameName}/Playthroughs`;
             const playthroughsFolderObj = this.app.vault.getAbstractFileByPath(playthroughsFolder);
-            
-            if (!playthroughsFolderObj || !('children' in playthroughsFolderObj)) {
+
+            if (!(playthroughsFolderObj instanceof TFolder)) {
                 console.log(`Playthroughs folder not found: ${playthroughsFolder}`);
                 return;
             }
@@ -709,7 +709,7 @@ ${finalThoughts || 'No final thoughts recorded.'}
             let currentActivePlaythrough = '';
 
             // Analyze all playthroughs
-            for (const playthroughFile of playthroughsFolderObj.children as TFile[]) {
+            for (const playthroughFile of playthroughsFolderObj.children) {
                 if (playthroughFile instanceof TFile && playthroughFile.extension === 'md') {
                     try {
                         const cache = this.app.metadataCache.getFileCache(playthroughFile);
