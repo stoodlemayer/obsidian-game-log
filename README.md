@@ -46,4 +46,4 @@ A full README.md is being written and will be released alongside the next major 
 
 ## Support
 
-Report issues: [GitHub Issues](https://github.com/stoodlemayer/obsidian-gaming-log/issues)
+Report issues: [GitHub Issues](https://github.com/stoodlemayer/obsidian-game-log/issues)
