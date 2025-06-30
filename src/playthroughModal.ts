@@ -99,6 +99,13 @@ export class PlaythroughModal extends Modal {
         }
     }
 
+    private sanitizeForFileSystem(name: string): string {
+        return name
+            .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filename characters
+            .replace(/\s+/g, ' ') // Normalize multiple spaces to single spaces
+            .trim(); // Remove leading/trailing whitespace
+    }
+
     private async createPlaythrough() {
         if (!this.playthroughName.trim()) {
             new Notice('Please enter a playthrough name');
@@ -108,10 +115,27 @@ export class PlaythroughModal extends Modal {
         try {
             const playthroughId = this.generatePlaythroughId();
             
-            // Create playthrough file
+            // Sanitize playthrough name for file system
+            const safePlaythroughName = this.sanitizeForFileSystem(this.playthroughName);
+            
+            // Validate that we still have a name after sanitization
+            if (!safePlaythroughName) {
+                new Notice('Playthrough name contains only invalid characters. Please use a different name.');
+                return;
+            }
+            
+            // Check if sanitization changed the name and warn user
+            if (safePlaythroughName !== this.playthroughName.trim()) {
+                console.log(`Playthrough name sanitized from "${this.playthroughName}" to "${safePlaythroughName}"`);
+            }
+            
+            // Create playthrough file using safe name for filename
             const playthroughContent = this.generatePlaythroughDashboard(playthroughId);
-            const playthroughFileName = `${this.playthroughName.trim()} - Dashboard.md`;
-            const playthroughPath = `${this.plugin.settings.gamesFolder}/${this.gameFrontmatter.game_name}/Playthroughs/${playthroughFileName}`;
+            const playthroughFileName = `${safePlaythroughName} - Dashboard.md`;
+            
+            // Use the sanitized game name for the folder path and the filename variable
+            const safeGameName = this.sanitizeForFileSystem(this.gameFrontmatter.game_name as string);
+            const playthroughPath = `${this.plugin.settings.gamesFolder}/${safeGameName}/Playthroughs/${playthroughFileName}`;
             
             const playthroughFile = await this.app.vault.create(playthroughPath, playthroughContent);
             
@@ -132,10 +156,10 @@ export class PlaythroughModal extends Modal {
     }
 
     private generatePlaythroughId(): string {
-        // Simple approach: playthrough name + short random string
-        const sanitizedName = this.playthroughName.replace(/[^a-zA-Z0-9]/g, '_');
+        // Use sanitized name for the ID
+        const sanitizedName = this.sanitizeForFileSystem(this.playthroughName);
         const randomSuffix = Math.random().toString(36).substring(2, 8);
-        return `${sanitizedName}_${randomSuffix}`;
+        return `${sanitizedName.replace(/\s+/g, '_')}_${randomSuffix}`;
     }
 
     private generatePlaythroughDashboard(playthroughId: string): string {
@@ -173,6 +197,7 @@ style: primary
 label: 🎮 Start Session
 id: startSession
 hidden: true
+tooltip: Starts a new session and enables the autosave. Will update the Playthrough status to Active if it isn't Active already.
 action:
    type: command
    command: game-log:start-gaming-session
@@ -182,6 +207,7 @@ style: primary
 label: 💾 End Session
 id: endSession
 hidden: true
+tooltip: Ends the current session and saves the game log.
 action:
    type: command
    command: game-log:end-gaming-session
@@ -191,6 +217,7 @@ style: destructive
 label: ✅ Complete Playthrough
 id: completePlaythrough
 hidden: true
+tooltip: This will end the current playthrough and generate the Playthrough Report.
 action:
    type: command
    command: game-log:complete-playthrough
@@ -205,16 +232,18 @@ ${this.mainObjective ? `**Main Objective**: ${this.mainObjective}` : ''}
 
 ---
 
-**Notes from Last Session:**
-\`VIEW[{notes_from_last_session}][text]\`
+## Notes from Last Session
+\`VIEW[{notes_from_last_session}][text(renderMarkdown)]\`
+
+---
 
 ## Current Session Notes
 
-\`INPUT[textArea(placeholder(What happened this session? What are you working on?)):current_session_notes]\`
+\`INPUT[textArea(placeholder(What happened this session? What are you working on? Note: Markdown formatting will render when saved.)):current_session_notes]\`
 
 ## Notes for Next Session
 
-\`INPUT[textArea(placeholder(To-dos or reminders for next time)):notes_for_next_session]\`
+\`INPUT[textArea(placeholder(To-dos or reminders for next time. Note: Markdown formatting will render when saved.)):notes_for_next_session]\`
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "id": "game-log",
   "name": "Game Log",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "minAppVersion": "0.15.0",
   "description": "Track gaming sessions, playthroughs, and completion statistics with ADHD-friendly auto-saving.",
   "author": "Logan Stoodley",

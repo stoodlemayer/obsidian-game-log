@@ -1,6 +1,6 @@
 {
   "name": "obsidian-game-log",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Track gaming sessions and playthroughs in Obsidian with ADHD-friendly features",
   "main": "main.js",
   "scripts": {

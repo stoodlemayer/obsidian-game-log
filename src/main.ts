@@ -217,6 +217,13 @@ export default class GameLogPlugin extends Plugin {
         workspace.revealLeaf(leaf);
     }
 
+     private sanitizeForFileSystem(name: string): string {
+        return name
+            .replace(/[<>:"/\\|?*]/g, '') // Remove invalid filename characters
+            .replace(/\s+/g, ' ') // Normalize multiple spaces to single spaces
+            .trim(); // Remove leading/trailing whitespace
+    }
+
     async createNewPlaythrough(gameFile: TFile) {
         try {
             const modal = new PlaythroughModal(this.app, this, gameFile);
@@ -829,7 +836,7 @@ ${finalThoughts || 'No final thoughts recorded.'}
         
         return compatibility[store]?.includes(platform) || false;
     }
-
+/*  Delete in 0.8 if no systems break
     getDefaultPCStores(): string[] {
         const pcDevices = this.settings.userDevices.filter(d => 
             ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
@@ -847,7 +854,7 @@ ${finalThoughts || 'No final thoughts recorded.'}
         
         return ['Steam'];
     }
-
+*/
     getActiveDevices(): UserDevice[] {
         return this.settings.userDevices.filter(device => 
             device.enabledStores.length > 0 || device.enabledSubscriptions.length > 0
@@ -1210,9 +1217,12 @@ ${notes}
             await this.app.vault.delete(snapshotFile);
         }
 
-        // Create session log
+        // Sanitize game name for file path
+        const safeGameName = this.sanitizeForFileSystem(frontmatter.game_name as string);
+        
+        // Create session log content
         const sessionLogContent = `---
-game_name: ${frontmatter.game_name || 'Unknown Game'}
+game_name: "${frontmatter.game_name}"
 playthrough_name: "${frontmatter.playthrough_name}"
 playthrough_id: "${frontmatter.playthrough_id}"
 session_number: ${sessionNumber}
@@ -1243,7 +1253,8 @@ ${frontmatter.notes_for_next_session || 'No notes for next session.'}
 
 *Session automatically logged from Playthrough Dashboard*`;
 
-        const sessionLogPath = `${this.settings.gamesFolder}/${frontmatter.game_name}/Sessions/Session ${sessionNumber} - ${sessionDate} - ${frontmatter.playthrough_id}.md`;
+        // Use sanitized game name for folder path but keep original for filename display
+        const sessionLogPath = `${this.settings.gamesFolder}/${safeGameName}/Sessions/Session ${sessionNumber} - ${sessionDate} - ${frontmatter.playthrough_id}.md`;
         await this.app.vault.create(sessionLogPath, sessionLogContent);
 
         // Update playthrough dashboard

@@ -1,4 +1,35 @@
+/* Update styles.css - Enhanced keyboard navigation highlighting */
+
 .keyboard-selected {
     background-color: var(--interactive-accent) !important;
     color: var(--text-on-accent) !important;
+    border: 2px solid var(--interactive-accent-hover) !important;
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover) !important;
+    transition: all 0.2s ease !important;
+}
+
+/* Ensure keyboard selection is visible in search dropdowns */
+.search-dropdown .keyboard-selected {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+}
+
+/* Make sure manual option gets highlighted too */
+.manual-option.keyboard-selected {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+}
+
+/* Category cards keyboard selection */
+.category-card.keyboard-selected {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+    border-color: var(--interactive-accent-hover) !important;
+}
+
+/* Platform cards keyboard selection */
+.platform-card.keyboard-selected {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+    border-color: var(--interactive-accent-hover) !important;
 }
