@@ -222,13 +222,23 @@ action:
    type: command
    command: game-log:complete-playthrough
 \`\`\`
+\`\`\`meta-bind-button
+style: default
+label: 📤 Share Notes
+id: shareSession
+hidden: true
+tooltip: Copy session notes to clipboard for sharing on Discord, Reddit, or as plain text.
+action:
+   type: command
+   command: game-log:share-session-notes
+\`\`\`
 ${dashboardImage ? `\`VIEW[{dashboard_image}][image]\`` : ''}
 # ${gameName} | ${this.playthroughName}
 
 ${this.mainObjective ? `**Main Objective**: ${this.mainObjective}` : ''}
 **Status**: \`INPUT[inlineSelect(option(Planned), option(Active), option(Completed), option(On Hold), option(Dropped)):status]\` | **Last Session**: \`VIEW[{last_session}][text]\` | **Total Sessions**: \`VIEW[{total_sessions}]\`
 
-\`BUTTON[startSession]\` \`BUTTON[endSession]\`
+\`BUTTON[startSession]\` \`BUTTON[endSession]\` \`BUTTON[shareSession]\`
 
 ---
 
@@ -253,7 +263,6 @@ ${this.mainObjective ? `**Main Objective**: ${this.mainObjective}` : ''}
 TABLE WITHOUT ID
   link(file.link, "Session " + session_number) as "Session",
   session_date as "Date",
-  duration as "Duration"
 FROM "${this.plugin.settings.gamesFolder}/${gameName}/Sessions"
 WHERE playthrough_id = "${playthroughId}"
 AND !contains(file.name, "_current_session_")

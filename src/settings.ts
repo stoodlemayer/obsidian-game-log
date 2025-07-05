@@ -24,31 +24,39 @@ export class GameLogSettingTab extends PluginSettingTab {
 
     private getSmartPlatformLabel(): string {
         const computerDevices = this.plugin.settings.userDevices.filter(d => 
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
+            d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
         );
         
         if (computerDevices.length === 0) {
             return 'PC'; // Default fallback
         }
         
-        const platforms = new Set(computerDevices.map(d => d.basePlatform));
+        const allPlatforms = new Set<string>();
+        computerDevices.forEach(device => {
+            device.platforms.forEach(platform => {
+                if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+                    allPlatforms.add(platform);
+                }
+            });
+        });
+        
         const platformLabels: string[] = [];
         
         // Always show PC first (covers Windows/PC)
-        if (platforms.has('PC') || platforms.has('Windows')) {
+        if (allPlatforms.has('PC') || allPlatforms.has('Windows')) {
             platformLabels.push('PC');
         }
         
-        if (platforms.has('Mac')) {
+        if (allPlatforms.has('Mac')) {
             platformLabels.push('Mac');
         }
         
-        if (platforms.has('Linux')) {
+        if (allPlatforms.has('Linux')) {
             platformLabels.push('Linux');
         }
         
         // SteamOS gets treated as Linux for labeling
-        if (platforms.has('SteamOS') && !platforms.has('Linux')) {
+        if (allPlatforms.has('SteamOS') && !allPlatforms.has('Linux')) {
             platformLabels.push('SteamOS');
         }
         
@@ -60,44 +68,71 @@ export class GameLogSettingTab extends PluginSettingTab {
             ps5: {
                 name: 'PlayStation 5',
                 type: 'console' as DeviceType,
-                basePlatform: 'PlayStation',
-                stores: ['PlayStation Store'],
-                subscriptions: ['PlayStation Plus', 'EA Play', 'Ubisoft+']
+                platforms: ['PlayStation'],
+                platformStores: {
+                    'PlayStation': ['PlayStation Store']
+                },
+                platformSubscriptions: {
+                    'PlayStation': ['PlayStation Plus', 'EA Play', 'Ubisoft+'].filter(sub => 
+                        this.plugin.settings.enabledSubscriptions[sub] === true
+                    )
+                }
             },
             xbox: {
                 name: 'Xbox Series X',
                 type: 'console' as DeviceType,
-                basePlatform: 'Xbox',
-                stores: ['Xbox Store'],
-                subscriptions: ['Xbox Game Pass', 'EA Play']
+                platforms: ['Xbox'],
+                platformStores: {
+                    'Xbox': ['Xbox Store']
+                },
+                platformSubscriptions: {
+                    'Xbox': ['Xbox Game Pass', 'EA Play', 'Ubisoft+'].filter(sub => 
+                        this.plugin.settings.enabledSubscriptions[sub] === true
+                    )
+                }
             },
             switch: {
                 name: 'Nintendo Switch 2',
                 type: 'handheld' as DeviceType,
-                basePlatform: 'Nintendo',
-                stores: ['Nintendo eShop'],
-                subscriptions: ['Nintendo Switch Online']
+                platforms: ['Nintendo'],
+                platformStores: {
+                    'Nintendo': ['Nintendo eShop']
+                },
+                platformSubscriptions: {
+                    'Nintendo': ['Nintendo Switch Online'].filter(sub => 
+                        this.plugin.settings.enabledSubscriptions[sub] === true
+                    )
+                }
             },
             pc: {
                 name: 'Gaming PC',
                 type: 'computer' as DeviceType,
-                basePlatform: 'Windows',
-                stores: ['Steam', 'Epic Games Store'],
-                subscriptions: ['PC Game Pass', 'EA Play']
+                platforms: ['Windows'],
+                platformStores: {
+                    'Windows': this.getEnabledPCStores()
+                },
+                platformSubscriptions: {
+                    'Windows': ['PC Game Pass', 'EA Play', 'Ubisoft+'].filter(sub => 
+                        this.plugin.settings.enabledSubscriptions[sub] === true
+                    )
+                }
             },
             steamdeck: {
                 name: 'Steam Deck',
                 type: 'handheld' as DeviceType,
-                basePlatform: 'SteamOS', // Steam Deck runs SteamOS but is PC-compatible
-                stores: ['Steam'],
-                subscriptions: []
+                platforms: ['SteamOS'],
+                platformStores: {
+                    'SteamOS': ['Steam']
+                },
+                platformSubscriptions: {
+                    'SteamOS': []
+                }
             }
         };
         
         const config = deviceConfigs[deviceType];
         
         try {
-            // Check if device already exists
             // Generate unique name if device already exists
             let deviceName = config.name;
             let counter = 2;
@@ -110,15 +145,11 @@ export class GameLogSettingTab extends PluginSettingTab {
                 id: `quick-${deviceType}-${Date.now()}`,
                 name: deviceName,
                 type: config.type,
-                basePlatform: config.basePlatform,
-                availableStores: [...config.stores],
-                enabledStores: [...config.stores], // Enable all stores by default
-                availableSubscriptions: [...config.subscriptions],
-                enabledSubscriptions: config.subscriptions.filter(sub => 
-                    this.plugin.settings.enabledSubscriptions[sub] === true
-                ),
+                platforms: config.platforms,
+                platformStores: config.platformStores,
+                platformSubscriptions: config.platformSubscriptions,
                 isDefault: !this.plugin.settings.userDevices.some(d => 
-                    d.basePlatform === config.basePlatform && d.isDefault
+                    d.platforms.some(p => config.platforms.includes(p)) && d.isDefault
                 ),
                 isAutoGenerated: true
             };
@@ -168,6 +199,32 @@ export class GameLogSettingTab extends PluginSettingTab {
                 }));
     }
 
+    private getEnabledPCStores(): string[] {
+        // Get stores that are currently enabled on existing PC devices
+        const pcDevices = this.plugin.settings.userDevices.filter(d => 
+            d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
+        );
+        
+        if (pcDevices.length === 0) {
+            // No existing PC devices - use minimal default
+            return ['Steam'];
+        }
+        
+        // Get stores that are enabled on existing PC devices
+        const enabledStores = new Set<string>();
+        pcDevices.forEach(device => {
+            device.platforms.forEach(platform => {
+                if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+                    if (device.platformStores[platform]) {
+                        device.platformStores[platform].forEach(store => enabledStores.add(store));
+                    }
+                }
+            });
+        });
+        
+        return Array.from(enabledStores);
+    }
+    
     private addPlatformSettings(containerEl: HTMLElement) {
         
         // Only show platform toggles in basic mode
@@ -435,20 +492,88 @@ export class GameLogSettingTab extends PluginSettingTab {
     }
 
     private async createDefaultDeviceForPlatform(platform: string) {
-        const device = await this.plugin.createDefaultDeviceForPlatform(platform);
-        if (device) {
-            new Notice(`✅ Added ${device.name}!`);
-        }
+        const platformConfigs: Record<string, {name: string, type: DeviceType, platforms: string[], stores: string[], subscriptions: string[]}> = {
+            'PC': { 
+                name: 'Gaming PC', 
+                type: 'computer', 
+                platforms: ['Windows'],
+                stores: this.getEnabledPCStores(),
+                subscriptions: ['PC Game Pass', 'EA Play','Ubisoft+'].filter(sub => 
+                    this.plugin.settings.enabledSubscriptions[sub] === true
+                )
+            },
+            'PlayStation': { 
+                name: 'PlayStation 5', 
+                type: 'console', 
+                platforms: ['PlayStation'],
+                stores: ['PlayStation Store'],
+                subscriptions: ['PlayStation Plus', 'EA Play', 'Ubisoft+'].filter(sub => 
+                    this.plugin.settings.enabledSubscriptions[sub] === true
+                )
+            },
+            'Xbox': { 
+                name: 'Xbox Series X|S', 
+                type: 'console', 
+                platforms: ['Xbox'],
+                stores: ['Xbox Store'],
+                subscriptions: ['Xbox Game Pass', 'EA Play', 'Ubisoft+'].filter(sub => 
+                    this.plugin.settings.enabledSubscriptions[sub] === true
+                )
+            },
+            'Nintendo': { 
+                name: 'Nintendo Switch', 
+                type: 'console', 
+                platforms: ['Nintendo'],
+                stores: ['Nintendo eShop'],
+                subscriptions: ['Nintendo Switch Online'].filter(sub => 
+                    this.plugin.settings.enabledSubscriptions[sub] === true
+                )
+            }
+        };
+        
+        const config = platformConfigs[platform];
+        if (!config) return null;
+        
+        // Create device with proper platform stores structure
+        const platformStores: Record<string, string[]> = {};
+        const platformSubscriptions: Record<string, string[]> = {};
+        
+        config.platforms.forEach(platformName => {
+            platformStores[platformName] = [...config.stores];
+            platformSubscriptions[platformName] = [...config.subscriptions];
+        });
+        
+        const newDevice: UserDevice = {
+            id: `default-${platform.toLowerCase()}-${Date.now()}`,
+            name: config.name,
+            type: config.type,
+            platforms: config.platforms,
+            platformStores: platformStores,
+            platformSubscriptions: platformSubscriptions,
+            isDefault: !this.plugin.settings.userDevices.some(d => 
+                d.platforms.some(p => config.platforms.includes(p)) && d.isDefault
+            ),
+            isAutoGenerated: true
+        };
+        
+        this.plugin.settings.userDevices.push(newDevice);
+        await this.plugin.saveSettings();
+        
+        new Notice(`✅ Added ${newDevice.name}!`);
+        return newDevice;
     }
 
-    private async removeDevicesForPlatform(platform: string) {
+    private async removeDevicesForPlatform(platform: string): Promise<boolean> {
         let devicesForPlatform;
+        
         if (platform === 'PC') {
             devicesForPlatform = this.plugin.settings.userDevices.filter(d => 
-                ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
+                d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
             );
         } else {
-            devicesForPlatform = this.plugin.settings.userDevices.filter(d => d.basePlatform === platform);
+            devicesForPlatform = this.plugin.settings.userDevices.filter(d => 
+                d.platforms.includes(platform)
+            );
         }
         
         if (devicesForPlatform.length === 0) return false;
@@ -458,12 +583,19 @@ export class GameLogSettingTab extends PluginSettingTab {
         
         if (!confirmed) return false;
         
-        const success = await this.plugin.removeDevicesForPlatform(platform);
-        if (success) {
-            new Notice(`🗑️ Removed all ${platform} devices`);
+        if (platform === 'PC') {
+            this.plugin.settings.userDevices = this.plugin.settings.userDevices.filter(d => 
+                !d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
+            );
+        } else {
+            this.plugin.settings.userDevices = this.plugin.settings.userDevices.filter(d => 
+                !d.platforms.includes(platform)
+            );
         }
         
-        return success;
+        await this.plugin.saveSettings();
+        new Notice(`🗑️ Removed all ${platform} devices`);
+        return true;
     }
     
     private createDeviceCard(container: HTMLElement, device: UserDevice, index: number) {
@@ -507,7 +639,7 @@ export class GameLogSettingTab extends PluginSettingTab {
             font-size: 0.85em;
             color: var(--text-muted);
         `;
-        deviceMeta.textContent = `${device.basePlatform} ${device.type}${device.isAutoGenerated ? ' (auto-generated)' : ''}`;
+        deviceMeta.textContent = `${device.platforms.join('/')} ${device.type}${device.isAutoGenerated ? ' (auto-generated)' : ''}`;
         
         // Device details
         const deviceDetails = deviceCard.createDiv('device-details');
@@ -515,17 +647,33 @@ export class GameLogSettingTab extends PluginSettingTab {
             font-size: 0.9em;
             line-height: 1.4;
         `;
-        
-        // Stores
-        if (device.enabledStores.length > 0) {
-            const storesLine = deviceDetails.createDiv();
-            storesLine.innerHTML = `<strong>Stores:</strong> ${device.enabledStores.join(', ')}`;
+
+        // Platforms
+        if (device.platforms.length > 0) {
+            const platformsLine = deviceDetails.createDiv();
+            platformsLine.innerHTML = `<strong>Platforms:</strong> ${device.platforms.join(', ')}`;
         }
-        
-        // Subscriptions
-        if (device.enabledSubscriptions.length > 0) {
+
+        // Stores (combine all platforms)
+        const allStores = new Set<string>();
+        Object.values(device.platformStores).forEach(stores => {
+            stores.forEach(store => allStores.add(store));
+        });
+
+        if (allStores.size > 0) {
+            const storesLine = deviceDetails.createDiv();
+            storesLine.innerHTML = `<strong>Stores:</strong> ${Array.from(allStores).join(', ')}`;
+        }
+
+        // Subscriptions (combine all platforms)
+        const allSubscriptions = new Set<string>();
+        Object.values(device.platformSubscriptions).forEach(subs => {
+            subs.forEach(sub => allSubscriptions.add(sub));
+        });
+
+        if (allSubscriptions.size > 0) {
             const subsLine = deviceDetails.createDiv();
-            subsLine.innerHTML = `<strong>Subscriptions:</strong> ${device.enabledSubscriptions.join(', ')}`;
+            subsLine.innerHTML = `<strong>Subscriptions:</strong> ${Array.from(allSubscriptions).join(', ')}`;
         }
         
         // Actions
@@ -594,9 +742,9 @@ export class GameLogSettingTab extends PluginSettingTab {
     private addPCStoreManagement(containerEl: HTMLElement) {
         // Only show if there are PC devices OR we're in advanced mode (so users can pre-configure stores)
         const pcDevices = this.plugin.settings.userDevices.filter(d => 
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
+            d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
         );
-        
+                
         // Don't show this section if no PC devices and not in advanced mode
         if (pcDevices.length === 0 && !this.plugin.settings.showAdvancedDeviceSettings) {
             return;
@@ -611,7 +759,18 @@ export class GameLogSettingTab extends PluginSettingTab {
         // Get current PC stores - use defaults if no devices exist
         let currentPCStores: string[];
         if (pcDevices.length > 0) {
-            currentPCStores = pcDevices[0]?.availableStores || [];
+            // Get all stores from all PC platforms
+            const allPCStores = new Set<string>();
+            pcDevices.forEach(device => {
+                device.platforms.forEach(platform => {
+                    if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+                        if (device.platformStores[platform]) {
+                            device.platformStores[platform].forEach(store => allPCStores.add(store));
+                        }
+                    }
+                });
+            });
+            currentPCStores = Array.from(allPCStores);
         } else {
             // Use default PC stores when no devices exist
             currentPCStores = ['Steam']; // Match the device creation default
@@ -772,14 +931,15 @@ export class GameLogSettingTab extends PluginSettingTab {
         
         // Get current stores to filter out
         const pcDevices = this.plugin.settings.userDevices.filter(d => 
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
+            d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
         );
-        const currentStores = pcDevices[0]?.availableStores || [];
-        
-        // Get PC devices to check compatibility
-        const availablePCDevices = this.plugin.settings.userDevices.filter(d =>
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
-        );
+        const currentStores = Array.from(new Set(
+            pcDevices.flatMap(device => 
+                device.platforms
+                    .filter(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
+                    .flatMap(platform => device.platformStores[platform] || [])
+            )
+        ));
         
         // Predefined stores that are compatible with at least one PC device and not already added
         const allPredefinedStores = [
@@ -792,8 +952,8 @@ export class GameLogSettingTab extends PluginSettingTab {
             if (currentStores.includes(store)) return false;
             
             // Must be compatible with at least one PC device
-            return availablePCDevices.some(device =>
-                this.plugin.validateStoreDeviceCombination(store, device)
+            return pcDevices.some((device: UserDevice) =>
+                device.platforms.some((platform: string) => this.plugin.isStoreCompatible(store, platform))
             );
         });
         
@@ -850,7 +1010,15 @@ export class GameLogSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     if (customStoreName.trim()) {
                         const trimmedName = customStoreName.trim();
-                        const currentStores = this.plugin.settings.userDevices.find(d => d.basePlatform === 'PC')?.availableStores || [];
+                        const currentStores = Array.from(new Set(
+                            this.plugin.settings.userDevices
+                                .filter(d => d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p)))
+                                .flatMap(device => 
+                                    device.platforms
+                                        .filter(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
+                                        .flatMap(platform => device.platformStores[platform] || [])
+                                )
+                        ));
                         
                         if (!currentStores.includes(trimmedName)) {
                             await this.addStoreToAllPCDevices(trimmedName);
@@ -869,26 +1037,28 @@ export class GameLogSettingTab extends PluginSettingTab {
         let hasUpdates = false;
         const incompatibleDevices: string[] = [];
         
-        // Get all PC devices
-        const targetPCDevices = this.plugin.settings.userDevices.filter(device => 
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(device.basePlatform)
+        // Get all devices that have PC platforms
+        const targetDevices = this.plugin.settings.userDevices.filter(device => 
+            device.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
         );
         
-        targetPCDevices.forEach(device => {
-            // Check compatibility before adding
-            if (this.plugin.validateStoreDeviceCombination(store, device)) {
-                if (!device.availableStores.includes(store)) {
-                    device.availableStores.push(store);
-                    hasUpdates = true;
+        targetDevices.forEach(device => {
+            device.platforms.forEach(platform => {
+                if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+                    // Check compatibility before adding
+                    if (this.plugin.isStoreCompatible(store, platform)) {
+                        if (!device.platformStores[platform]) {
+                            device.platformStores[platform] = [];
+                        }
+                        if (!device.platformStores[platform].includes(store)) {
+                            device.platformStores[platform].push(store);
+                            hasUpdates = true;
+                        }
+                    } else {
+                        incompatibleDevices.push(`${device.name} (${platform})`);
+                    }
                 }
-                // Also enable the store by default on compatible devices
-                if (!device.enabledStores.includes(store)) {
-                    device.enabledStores.push(store);
-                    hasUpdates = true;
-                }
-            } else {
-                incompatibleDevices.push(`${device.name} (${device.basePlatform})`);
-            }
+            });
         });
         
         if (hasUpdates) {
@@ -905,19 +1075,18 @@ export class GameLogSettingTab extends PluginSettingTab {
         let hasUpdates = false;
         
         this.plugin.settings.userDevices.forEach(device => {
-            if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(device.basePlatform)) {
-                // Remove from available stores
-                const oldAvailableLength = device.availableStores.length;
-                device.availableStores = device.availableStores.filter(s => s !== store);
-                
-                // Remove from enabled stores
-                const oldEnabledLength = device.enabledStores.length;
-                device.enabledStores = device.enabledStores.filter(s => s !== store);
-                
-                if (device.availableStores.length !== oldAvailableLength || device.enabledStores.length !== oldEnabledLength) {
-                    hasUpdates = true;
+            device.platforms.forEach(platform => {
+                if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+                    if (device.platformStores[platform]) {
+                        const oldLength = device.platformStores[platform].length;
+                        device.platformStores[platform] = device.platformStores[platform].filter(s => s !== store);
+                        
+                        if (device.platformStores[platform].length !== oldLength) {
+                            hasUpdates = true;
+                        }
+                    }
                 }
-            }
+            });
         });
         
         if (hasUpdates) {
@@ -927,16 +1096,20 @@ export class GameLogSettingTab extends PluginSettingTab {
     }
 
     private async reorderPCStore(fromIndex: number, toIndex: number) {
-        const pcDevices = this.plugin.settings.userDevices.filter(d => 
-            ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(d.basePlatform)
+        const pcDevicesForReorder = this.plugin.settings.userDevices.filter(d =>
+            d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
         );
         
-        pcDevices.forEach(device => {
-            // Reorder the stores array
-            const stores = [...device.availableStores];
-            const [movedStore] = stores.splice(fromIndex, 1);
-            stores.splice(toIndex, 0, movedStore);
-            device.availableStores = stores;
+        pcDevicesForReorder.forEach((device: UserDevice) => {
+            device.platforms.forEach((platform: string) => {
+                if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform) && device.platformStores[platform]) {
+                    // Reorder the stores array
+                    const stores = [...device.platformStores[platform]];
+                    const [movedStore] = stores.splice(fromIndex, 1);
+                    stores.splice(toIndex, 0, movedStore);
+                    device.platformStores[platform] = stores;
+                }
+            });
         });
         
         await this.plugin.saveSettings();
@@ -944,40 +1117,164 @@ export class GameLogSettingTab extends PluginSettingTab {
 
     private addSubscriptionSettings(containerEl: HTMLElement) {
         containerEl.createEl('h3', {text: '📺 Subscription Services'});
-        containerEl.createEl('p', {
-            text: 'Enable the subscription services you have access to. These will appear as options when creating games.',
-            cls: 'setting-item-description'
+        
+        // Get available subscriptions based on user devices
+        const availableSubscriptions = this.getAvailableSubscriptionsFromDevices();
+        
+        if (availableSubscriptions.length === 0) {
+            const noSubsContainer = containerEl.createDiv('no-subscriptions-container');
+            noSubsContainer.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                background: var(--background-secondary);
+                border-radius: 8px;
+                margin: 15px 0;
+            `;
+            
+            noSubsContainer.createEl('p', {
+                text: '🎮 No subscription services available for your current devices.',
+                cls: 'setting-item-description'
+            });
+            
+            noSubsContainer.createEl('p', {
+                text: 'Add gaming devices above to see relevant subscription options.',
+                cls: 'setting-item-description'
+            });
+            
+            return;
+        }
+
+        const descEl = containerEl.createEl('p', { cls: 'setting-item-description' });
+        descEl.innerHTML = `
+            Enable subscription services available on your devices. 
+            ${availableSubscriptions.length < this.getAllPossibleSubscriptions().length ? 
+                `<br><em>Some services are hidden because you don't have compatible devices.</em>` : 
+                ''}
+        `;
+
+        // Group subscriptions by category for better organization
+        const groupedSubscriptions = this.groupSubscriptionsByCategory(availableSubscriptions);
+        
+        Object.entries(groupedSubscriptions).forEach(([category, subscriptions]) => {
+            if (subscriptions.length === 0) return;
+            
+            // Add category header if we have multiple categories
+            if (Object.keys(groupedSubscriptions).length > 1) {
+                containerEl.createEl('h4', { 
+                    text: category,
+                    attr: { style: 'margin-top: 20px; margin-bottom: 10px; color: var(--text-muted); font-size: 1em;' }
+                });
+            }
+            
+            subscriptions.forEach(service => {
+                // Show which devices support this subscription
+                const supportingDevices = this.getDevicesSupportingSubscription(service.key);
+                const deviceNames = supportingDevices.map(d => d.name).join(', ');
+                
+                new Setting(containerEl)
+                    .setName(service.name)
+                    .setDesc(`${service.desc} • Available on: ${deviceNames}`)
+                    .addToggle(toggle => toggle
+                        .setValue(this.plugin.settings.enabledSubscriptions[service.key] || false)
+                        .onChange(async (value) => {
+                            this.plugin.settings.enabledSubscriptions[service.key] = value;
+                            await this.plugin.saveSettings();
+                            
+                            // Update device subscriptions when global settings change
+                            await this.plugin.updateDeviceSubscriptions();
+                            
+                            // Refresh the device display to show updated subscriptions
+                            if (this.plugin.settings.showAdvancedDeviceSettings) {
+                                this.display();
+                            }
+                        }));
+            });
         });
+    }
 
-        // Create subscription toggles
-        const subscriptionServices = [
-            { key: 'PC Game Pass', name: 'PC Game Pass', desc: 'Microsoft Game Pass for PC' },
-            { key: 'Xbox Game Pass', name: 'Xbox Game Pass', desc: 'Microsoft Game Pass for Xbox consoles' },
-            { key: 'PlayStation Plus', name: 'PlayStation Plus', desc: 'Sony PlayStation Plus subscription' },
-            { key: 'Apple Arcade', name: 'Apple Arcade', desc: 'Apple\'s gaming subscription service' },
-            { key: 'Nintendo Switch Online', name: 'Nintendo Switch Online', desc: 'Nintendo\'s online service' },
-            { key: 'EA Play', name: 'EA Play', desc: 'Electronic Arts subscription service' },
-            { key: 'Ubisoft+', name: 'Ubisoft+', desc: 'Ubisoft\'s subscription service' }
+    private getAvailableSubscriptionsFromDevices(): Array<{key: string, name: string, desc: string}> {
+        const allSubscriptions = this.getAllPossibleSubscriptions();
+        const userDevices = this.plugin.settings.userDevices;
+        
+        // Get all subscriptions that are available on at least one user device
+        return allSubscriptions.filter(subscription => {
+            return userDevices.some(device => {
+                return device.platforms.some(platform => {
+                    const platformSubscriptions = this.getPlatformSubscriptions(platform);
+                    return platformSubscriptions.includes(subscription.key);
+                });
+            });
+        });
+    }
+
+    private getAllPossibleSubscriptions(): Array<{key: string, name: string, desc: string, category: string}> {
+        return [
+            // PC Gaming
+            { key: 'PC Game Pass', name: 'PC Game Pass', desc: 'Microsoft Game Pass for PC', category: 'PC Gaming' },
+            { key: 'EA Play', name: 'EA Play', desc: 'Electronic Arts subscription service', category: 'Multi-Platform' },
+            { key: 'Ubisoft+', name: 'Ubisoft+', desc: 'Ubisoft\'s subscription service', category: 'Multi-Platform' },
+            
+            // Console Gaming
+            { key: 'Xbox Game Pass', name: 'Xbox Game Pass', desc: 'Microsoft Game Pass for Xbox consoles', category: 'Console Gaming' },
+            { key: 'PlayStation Plus', name: 'PlayStation Plus', desc: 'Sony PlayStation Plus subscription', category: 'Console Gaming' },
+            { key: 'Nintendo Switch Online', name: 'Nintendo Switch Online', desc: 'Nintendo\'s online service', category: 'Console Gaming' },
+            
+            // Mobile Gaming
+            { key: 'Apple Arcade', name: 'Apple Arcade', desc: 'Apple\'s gaming subscription service', category: 'Mobile Gaming' }
         ];
+    }
 
-        subscriptionServices.forEach(service => {
-            new Setting(containerEl)
-                .setName(service.name)
-                .setDesc(service.desc)
-                .addToggle(toggle => toggle
-                    .setValue(this.plugin.settings.enabledSubscriptions[service.key] || false)
-                    .onChange(async (value) => {
-                        this.plugin.settings.enabledSubscriptions[service.key] = value;
-                        await this.plugin.saveSettings();
-                        
-                        // Update device subscriptions when global settings change
-                        await this.plugin.updateDeviceSubscriptions();
-                        
-                        // Refresh the device display to show updated subscriptions
-                        if (this.plugin.settings.showAdvancedDeviceSettings) {
-                            this.display();
-                        }
-                    }));
+    private groupSubscriptionsByCategory(subscriptions: Array<{key: string, name: string, desc: string}>): Record<string, Array<{key: string, name: string, desc: string}>> {
+        const allSubs = this.getAllPossibleSubscriptions();
+        const grouped: Record<string, Array<{key: string, name: string, desc: string}>> = {
+            'PC Gaming': [],
+            'Console Gaming': [],
+            'Mobile Gaming': [],
+            'Multi-Platform': []
+        };
+        
+        subscriptions.forEach(sub => {
+            const fullSub = allSubs.find(s => s.key === sub.key);
+            if (fullSub) {
+                grouped[fullSub.category].push(sub);
+            }
+        });
+        
+        // Remove empty categories
+        Object.keys(grouped).forEach(category => {
+            if (grouped[category].length === 0) {
+                delete grouped[category];
+            }
+        });
+        
+        return grouped;
+    }
+
+    private getPlatformSubscriptions(platform: string): string[] {
+        const platformSubMap: Record<string, string[]> = {
+            'Windows': ['PC Game Pass', 'EA Play', 'Ubisoft+'],
+            'Mac': ['Apple Arcade'],
+            'Linux': [],
+            'SteamOS': [],
+            'PlayStation': ['PlayStation Plus', 'EA Play', 'Ubisoft+'],
+            'Xbox': ['Xbox Game Pass', 'EA Play', 'Ubisoft+'],
+            'Nintendo': ['Nintendo Switch Online'],
+            'iOS': ['Apple Arcade'],
+            'Android': [],
+            'Retro': [],
+            'Emulation': [],
+            'Other': []
+        };
+        
+        return platformSubMap[platform] || [];
+    }
+
+    private getDevicesSupportingSubscription(subscriptionKey: string): UserDevice[] {
+        return this.plugin.settings.userDevices.filter(device => {
+            return device.platforms.some(platform => {
+                const platformSubs = this.getPlatformSubscriptions(platform);
+                return platformSubs.includes(subscriptionKey);
+            });
         });
     }
 }
@@ -994,7 +1291,7 @@ class AddDeviceModal extends Modal {
     private selectedDevice = '';
     private deviceName = '';
     private finalDeviceType: DeviceType = 'computer';
-    private keyboardNav: KeyboardNavigationHelper | null = null; // ADD THIS LINE
+    private keyboardNav: KeyboardNavigationHelper | null = null;
 
     constructor(app: App, plugin: GameLogPlugin, onSave: () => void) {
         super(app);
@@ -1108,11 +1405,10 @@ class AddDeviceModal extends Modal {
                 categoryCard.style.background = 'var(--background-primary)';
             });
 
-            // Store reference for keyboard navigation
             categoryCards.push(categoryCard);
         });
 
-        // Setup keyboard navigation after all cards are created
+        // Setup keyboard navigation
         this.keyboardNav = new KeyboardNavigationHelper(categoriesContainer);
         categoriesContainer.setAttribute('tabindex', '0');
         
@@ -1192,26 +1488,6 @@ class AddDeviceModal extends Modal {
                 platformCard.style.background = 'var(--background-primary)';
             });
         });
-
-            // Setup keyboard navigation AFTER all platforms are created
-            this.keyboardNav = new KeyboardNavigationHelper(platformsContainer);
-            platformsContainer.setAttribute('tabindex', '0');
-            
-            platforms.forEach((platform, index) => {
-                const platformCard = platformsContainer.children[index] as HTMLElement;
-                if (this.keyboardNav) {
-                    this.keyboardNav.addItem(platformCard, () => {
-                        this.selectedPlatform = platform.key;
-                        this.finalDeviceType = platform.deviceType || 'computer';
-                        this.currentStep = 'device';
-                        this.renderCurrentStep();
-                    });
-                }
-            });
-            
-            setTimeout(() => {
-                platformsContainer.focus();
-            }, 50);
 
         this.addModalButtons(['Back', 'Cancel'], ['back', 'cancel']);
     }
@@ -1313,42 +1589,12 @@ class AddDeviceModal extends Modal {
             });
         });
 
-            // Setup keyboard navigation AFTER all devices are created
-            this.keyboardNav = new KeyboardNavigationHelper(devicesGrid);
-            devicesGrid.setAttribute('tabindex', '0');
-            
-            devices.forEach((device, index) => {
-                const deviceCard = devicesGrid.children[index] as HTMLElement;
-                if (this.keyboardNav) {
-                    this.keyboardNav.addItem(deviceCard, () => {
-                        this.selectedDevice = device.key;
-                        this.deviceName = device.name;
-                        this.currentStep = 'naming';
-                        this.renderCurrentStep();
-                    });
-                }
-            });
-            
-            setTimeout(() => {
-                devicesGrid.focus();
-            }, 50);
-
-            this.addModalButtons(['Back', 'Cancel'], ['back', 'cancel']);
-        }
+        this.addModalButtons(['Back', 'Cancel'], ['back', 'cancel']);
+    }
 
     private renderRetroSystemSelection(container: HTMLElement) {
         const retroSystems = this.getRetroSystems();
         
-        // Search input for retro systems
-        const searchContainer = container.createDiv('retro-search-container');
-        searchContainer.style.cssText = `
-            margin-bottom: 20px;
-        `;
-        
-        new Setting(searchContainer)
-            .setName('Search Retro Systems')
-            .setDesc('Type to search through classic gaming systems')
-
         // Grid for retro systems
         const retroGrid = container.createDiv('retro-grid');
         retroGrid.style.cssText = `
@@ -1390,6 +1636,7 @@ class AddDeviceModal extends Modal {
         customButton.onclick = () => {
             this.selectedDevice = 'custom-retro';
             this.deviceName = 'Custom Retro System';
+            this.selectedPlatform = 'Retro'; // Set proper platform for retro devices
             this.currentStep = 'naming';
             this.renderCurrentStep();
         };
@@ -1397,10 +1644,30 @@ class AddDeviceModal extends Modal {
         this.addModalButtons(['Back', 'Cancel'], ['back', 'cancel']);
     }
 
-    private populateRetroGrid(grid: HTMLElement, systems: Array<{key: string, name: string, manufacturer: string}>) {
-        grid.empty();
-        
-        systems.forEach(system => {
+        private populateRetroGrid(grid: HTMLElement, systems: Array<{key: string, name: string, manufacturer: string, platform: string}>) {
+            grid.empty();
+            
+            // Filter systems by selected platform
+            const filteredSystems = systems.filter(system => {
+                switch (this.selectedPlatform) {
+                    case 'Nintendo-Retro':
+                        return system.manufacturer === 'Nintendo';
+                    case 'Sega-Retro':
+                        return system.manufacturer === 'Sega';
+                    case 'Sony-Retro':
+                        return system.manufacturer === 'Sony';
+                    case 'Atari-Retro':
+                        return system.manufacturer === 'Atari';
+                    case 'Microsoft-Retro':
+                        return system.manufacturer === 'Microsoft';
+                    case 'Other-Retro':
+                        return !['Nintendo', 'Sega', 'Sony', 'Atari', 'Microsoft'].includes(system.manufacturer);
+                    default:
+                        return true; // Show all if no specific platform selected
+                }
+            });
+            
+            filteredSystems.forEach(system => {
             const systemCard = grid.createDiv('retro-system-card');
             systemCard.style.cssText = `
                 padding: 12px;
@@ -1429,6 +1696,7 @@ class AddDeviceModal extends Modal {
             systemCard.addEventListener('click', () => {
                 this.selectedDevice = system.key;
                 this.deviceName = system.name;
+                this.selectedPlatform = system.platform; // Use the system's proper platform
                 this.currentStep = 'naming';
                 this.renderCurrentStep();
             });
@@ -1443,38 +1711,6 @@ class AddDeviceModal extends Modal {
                 systemCard.style.background = 'var(--background-primary)';
             });
         });
-
-        // Setup keyboard navigation AFTER all systems are created
-        if (this.keyboardNav) {
-            this.keyboardNav.destroy();
-        }
-        this.keyboardNav = new KeyboardNavigationHelper(grid);
-        grid.setAttribute('tabindex', '0');
-        
-        systems.forEach((system, index) => {
-            const systemCard = grid.children[index] as HTMLElement;
-            if (this.keyboardNav) {
-                this.keyboardNav.addItem(systemCard, () => {
-                    this.selectedDevice = system.key;
-                    this.deviceName = system.name;
-                    this.currentStep = 'naming';
-                    this.renderCurrentStep();
-                });
-            }
-        });
-        
-        setTimeout(() => {
-            grid.focus();
-        }, 50);
-    }
-
-    private filterRetroSystems(grid: HTMLElement, allSystems: Array<{key: string, name: string, manufacturer: string}>, query: string) {
-        const filtered = allSystems.filter(system => 
-            system.name.toLowerCase().includes(query.toLowerCase()) ||
-            system.manufacturer.toLowerCase().includes(query.toLowerCase())
-        );
-        
-        this.populateRetroGrid(grid, filtered);
     }
 
     private renderDeviceNaming() {
@@ -1506,7 +1742,7 @@ class AddDeviceModal extends Modal {
         this.updateCreateButton();
     }
 
-    private getPlatformsForCategory(category: string) {
+private getPlatformsForCategory(category: string) {
         const platformMap: Record<string, Array<{key: string, name: string, icon: string, deviceType?: DeviceType}>> = {
             computer: [
                 { key: 'Windows', name: 'Windows', icon: '🪟', deviceType: 'computer' },
@@ -1525,11 +1761,12 @@ class AddDeviceModal extends Modal {
                 { key: 'Xbox', name: 'Xbox', icon: '🎮', deviceType: 'handheld' }
             ],
             retro: [
-                { key: 'Nintendo', name: 'Nintendo', icon: '🎮', deviceType: 'console' },
-                { key: 'Sega', name: 'Sega', icon: '🎮', deviceType: 'console' },
-                { key: 'Sony', name: 'Sony', icon: '🎮', deviceType: 'console' },
-                { key: 'Atari', name: 'Atari', icon: '🕹️', deviceType: 'console' },
-                { key: 'Other', name: 'Other', icon: '⚙️', deviceType: 'console' }
+                { key: 'Nintendo-Retro', name: 'Nintendo', icon: '🎮', deviceType: 'console' },
+                { key: 'Sega-Retro', name: 'Sega', icon: '🎮', deviceType: 'console' },
+                { key: 'Sony-Retro', name: 'Sony', icon: '🎮', deviceType: 'console' },
+                { key: 'Atari-Retro', name: 'Atari', icon: '🕹️', deviceType: 'console' },
+                { key: 'Microsoft-Retro', name: 'Microsoft', icon: '🎮', deviceType: 'console' },
+                { key: 'Other-Retro', name: 'Other Retro', icon: '⚙️', deviceType: 'console' }
             ],
             mobile: [
                 { key: 'iOS', name: 'iOS', icon: '📱', deviceType: 'mobile' },
@@ -1544,109 +1781,109 @@ class AddDeviceModal extends Modal {
     }
 
     private getDevicesForPlatform(category: string, platform: string): Array<{key: string, name: string}> {
-    const deviceMap: Record<string, Record<string, Array<{key: string, name: string}>>> = {
-        console: {
-            PlayStation: [
-                { key: 'ps5', name: 'PlayStation 5' },
-                { key: 'ps5-pro', name: 'PlayStation 5 Pro' },
-                { key: 'ps4-pro', name: 'PlayStation 4 Pro' },
-                { key: 'ps4-slim', name: 'PlayStation 4 Slim' },
-                { key: 'ps4', name: 'PlayStation 4' },
-                { key: 'ps3-slim', name: 'PlayStation 3 Slim' },
-                { key: 'ps3', name: 'PlayStation 3' }
-            ],
-            Xbox: [
-                { key: 'xbox-series-x', name: 'Xbox Series X' },
-                { key: 'xbox-series-s', name: 'Xbox Series S' },
-                { key: 'xbox-one-x', name: 'Xbox One X' },
-                { key: 'xbox-one-s', name: 'Xbox One S' },
-                { key: 'xbox-one', name: 'Xbox One' },
-                { key: 'xbox-360', name: 'Xbox 360' }
-            ],
-            Nintendo: [
-                { key: 'switch-2', name: 'Nintendo Switch 2' },
-                { key: 'switch-oled', name: 'Nintendo Switch OLED' },
-                { key: 'switch', name: 'Nintendo Switch' },
-                { key: 'switch-lite', name: 'Nintendo Switch Lite' },
-                { key: 'wii-u', name: 'Wii U' },
-                { key: 'wii', name: 'Wii' },
-                { key: '3ds-xl', name: 'Nintendo 3DS XL' },
-                { key: '3ds', name: 'Nintendo 3DS' }
-            ]
-        },
-        handheld: {
-            Windows: [
-                { key: 'rog-ally', name: 'ROG Ally' },
-                { key: 'rog-ally-x', name: 'ROG Ally X' },
-                { key: 'legion-go', name: 'Legion Go' },
-                { key: 'msi-claw', name: 'MSI Claw' },
-                { key: 'ayaneo', name: 'AyaNeo Device' },
-                { key: 'gpd-win', name: 'GPD Win' }
-            ],
-            SteamOS: [
-                { key: 'steam-deck', name: 'Steam Deck' },
-                { key: 'steam-deck-oled', name: 'Steam Deck OLED' }
-            ],
-            Xbox: [
-                { key: 'xbox-handheld', name: 'Xbox Handheld' }
-            ]
-        },
-        mobile: {
-            iOS: [
-                { key: 'iphone', name: 'iPhone' },
-                { key: 'ipad', name: 'iPad' },
-                { key: 'ipad-pro', name: 'iPad Pro' }
-            ],
-            Android: [
-                { key: 'android-phone', name: 'Android Phone' },
-                { key: 'android-tablet', name: 'Android Tablet' }
-            ]
-        }
-    };
+        const deviceMap: Record<string, Record<string, Array<{key: string, name: string}>>> = {
+            console: {
+                PlayStation: [
+                    { key: 'ps5', name: 'PlayStation 5' },
+                    { key: 'ps5-pro', name: 'PlayStation 5 Pro' },
+                    { key: 'ps4-pro', name: 'PlayStation 4 Pro' },
+                    { key: 'ps4-slim', name: 'PlayStation 4 Slim' },
+                    { key: 'ps4', name: 'PlayStation 4' },
+                ],
+                Xbox: [
+                    { key: 'xbox-series-x', name: 'Xbox Series X' },
+                    { key: 'xbox-series-s', name: 'Xbox Series S' },
+                    { key: 'xbox-one-x', name: 'Xbox One X' },
+                    { key: 'xbox-one-s', name: 'Xbox One S' },
+                    { key: 'xbox-one', name: 'Xbox One' },
+                ],
+                Nintendo: [
+                    { key: 'switch-2', name: 'Nintendo Switch 2' },
+                    { key: 'switch-oled', name: 'Nintendo Switch OLED' },
+                    { key: 'switch', name: 'Nintendo Switch' },
+                    { key: 'switch-lite', name: 'Nintendo Switch Lite' },
+                ]
+            },
+            handheld: {
+                Windows: [
+                    { key: 'rog-ally', name: 'ROG Ally' },
+                    { key: 'rog-ally-x', name: 'ROG Ally X' },
+                    { key: 'legion-go', name: 'Legion Go' },
+                    { key: 'msi-claw', name: 'MSI Claw' },
+                    { key: 'ayaneo', name: 'AyaNeo Device' },
+                    { key: 'gpd-win', name: 'GPD Win' }
+                ],
+                SteamOS: [
+                    { key: 'steam-deck', name: 'Steam Deck' },
+                    { key: 'steam-deck-oled', name: 'Steam Deck OLED' }
+                ],
+                Xbox: [
+                    { key: 'xbox-handheld', name: 'Xbox Handheld' }
+                ]
+            },
+            mobile: {
+                iOS: [
+                    { key: 'iphone', name: 'iPhone' },
+                    { key: 'ipad', name: 'iPad' },
+                    { key: 'ipad-pro', name: 'iPad Pro' }
+                ],
+                Android: [
+                    { key: 'android-phone', name: 'Android Phone' },
+                    { key: 'android-tablet', name: 'Android Tablet' }
+                ]
+            }
+        };
 
-    return deviceMap[category]?.[platform] || [];
-}
+        return deviceMap[category]?.[platform] || [];
+    }
 
-    private getRetroSystems(): Array<{key: string, name: string, manufacturer: string}> {
+    private getRetroSystems(): Array<{key: string, name: string, manufacturer: string, platform: string}> {
         return [
             // Nintendo Systems
-            { key: 'nes', name: 'Nintendo Entertainment System (NES)', manufacturer: 'Nintendo' },
-            { key: 'snes', name: 'Super Nintendo Entertainment System (SNES)', manufacturer: 'Nintendo' },
-            { key: 'n64', name: 'Nintendo 64', manufacturer: 'Nintendo' },
-            { key: 'gamecube', name: 'GameCube', manufacturer: 'Nintendo' },
-            { key: 'gameboy', name: 'Game Boy', manufacturer: 'Nintendo' },
-            { key: 'gameboy-color', name: 'Game Boy Color', manufacturer: 'Nintendo' },
-            { key: 'gameboy-advance', name: 'Game Boy Advance', manufacturer: 'Nintendo' },
-            { key: 'ds', name: 'Nintendo DS', manufacturer: 'Nintendo' },
+            { key: 'nes', name: 'Nintendo Entertainment System (NES)', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'snes', name: 'Super Nintendo Entertainment System (SNES)', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'n64', name: 'Nintendo 64', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'gamecube', name: 'GameCube', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'gameboy', name: 'Game Boy', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'gameboy-color', name: 'Game Boy Color', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'gameboy-advance', name: 'Game Boy Advance', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'ds', name: 'Nintendo DS', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: '3ds', name: 'Nintendo 3DS', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: '3ds-xl', name: 'Nintendo 3DS XL', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'wii', name: 'Wii', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'wii-u', name: 'Wii U', manufacturer: 'Nintendo', platform: 'Retro' },
             
             // Sega Systems
-            { key: 'genesis', name: 'Sega Genesis/Mega Drive', manufacturer: 'Sega' },
-            { key: 'saturn', name: 'Sega Saturn', manufacturer: 'Sega' },
-            { key: 'dreamcast', name: 'Sega Dreamcast', manufacturer: 'Sega' },
-            { key: 'master-system', name: 'Sega Master System', manufacturer: 'Sega' },
-            { key: 'game-gear', name: 'Sega Game Gear', manufacturer: 'Sega' },
+            { key: 'genesis', name: 'Sega Genesis/Mega Drive', manufacturer: 'Sega', platform: 'Retro' },
+            { key: 'saturn', name: 'Sega Saturn', manufacturer: 'Sega', platform: 'Retro' },
+            { key: 'dreamcast', name: 'Sega Dreamcast', manufacturer: 'Sega', platform: 'Retro' },
+            { key: 'master-system', name: 'Sega Master System', manufacturer: 'Sega', platform: 'Retro' },
+            { key: 'game-gear', name: 'Sega Game Gear', manufacturer: 'Sega', platform: 'Retro' },
             
             // Sony Systems
-            { key: 'ps1', name: 'PlayStation (PS1)', manufacturer: 'Sony' },
-            { key: 'ps2', name: 'PlayStation 2', manufacturer: 'Sony' },
-            { key: 'psp', name: 'PlayStation Portable (PSP)', manufacturer: 'Sony' },
-            { key: 'ps-vita', name: 'PlayStation Vita', manufacturer: 'Sony' },
+            { key: 'ps1', name: 'PlayStation (PS1)', manufacturer: 'Sony', platform: 'Retro' },
+            { key: 'ps2', name: 'PlayStation 2', manufacturer: 'Sony', platform: 'Retro' },
+            { key: 'psp', name: 'PlayStation Portable (PSP)', manufacturer: 'Sony', platform: 'Retro' },
+            { key: 'ps-vita', name: 'PlayStation Vita', manufacturer: 'Sony', platform: 'Retro' },
+            { key: 'ps3-slim', name: 'PlayStation 3 Slim', manufacturer: 'Sony', platform: 'Retro' },
+            { key: 'ps3', name: 'PlayStation 3', manufacturer: 'Sony', platform: 'Retro' },
             
             // Atari Systems
-            { key: 'atari-2600', name: 'Atari 2600', manufacturer: 'Atari' },
-            { key: 'atari-7800', name: 'Atari 7800', manufacturer: 'Atari' },
-            { key: 'atari-lynx', name: 'Atari Lynx', manufacturer: 'Atari' },
+            { key: 'atari-2600', name: 'Atari 2600', manufacturer: 'Atari', platform: 'Retro' },
+            { key: 'atari-7800', name: 'Atari 7800', manufacturer: 'Atari', platform: 'Retro' },
+            { key: 'atari-lynx', name: 'Atari Lynx', manufacturer: 'Atari', platform: 'Retro' },
             
             // Microsoft
-            { key: 'xbox-original', name: 'Original Xbox', manufacturer: 'Microsoft' },
+            { key: 'xbox-original', name: 'Original Xbox', manufacturer: 'Microsoft', platform: 'Retro' },
+            { key: 'xbox-360', name: 'Xbox 360', manufacturer: 'Microsoft', platform: 'Retro' },
             
             // Other Notable Systems
-            { key: '3do', name: '3DO Interactive Multiplayer', manufacturer: '3DO' },
-            { key: 'neo-geo', name: 'Neo Geo', manufacturer: 'SNK' },
-            { key: 'turbografx-16', name: 'TurboGrafx-16/PC Engine', manufacturer: 'NEC' },
-            { key: 'jaguar', name: 'Atari Jaguar', manufacturer: 'Atari' },
-            { key: 'virtual-boy', name: 'Virtual Boy', manufacturer: 'Nintendo' },
-            { key: 'wonderswan', name: 'WonderSwan', manufacturer: 'Bandai' }
+            { key: '3do', name: '3DO Interactive Multiplayer', manufacturer: '3DO', platform: 'Retro' },
+            { key: 'neo-geo', name: 'Neo Geo', manufacturer: 'SNK', platform: 'Retro' },
+            { key: 'turbografx-16', name: 'TurboGrafx-16/PC Engine', manufacturer: 'NEC', platform: 'Retro' },
+            { key: 'jaguar', name: 'Atari Jaguar', manufacturer: 'Atari', platform: 'Retro' },
+            { key: 'virtual-boy', name: 'Virtual Boy', manufacturer: 'Nintendo', platform: 'Retro' },
+            { key: 'wonderswan', name: 'WonderSwan', manufacturer: 'Bandai', platform: 'Retro' }
         ];
     }
 
@@ -1752,7 +1989,7 @@ class AddDeviceModal extends Modal {
             const newDevice = await this.plugin.addDevice(
                 this.deviceName.trim(),
                 this.finalDeviceType,
-                this.selectedPlatform
+                [this.selectedPlatform]
             );
             
             new Notice(`✅ Added ${newDevice.name}!`);
@@ -1772,8 +2009,8 @@ class AddDeviceModal extends Modal {
         if (this.keyboardNav) {
             this.keyboardNav.destroy();
             this.keyboardNav = null;
+        }
     }
-}
 }
 
 // Modal for editing existing devices
@@ -1791,13 +2028,12 @@ class EditDeviceModal extends Modal {
         this.deviceIndex = deviceIndex;
         this.onSave = onSave;
         
-        // Create a proper copy to edit with explicit array handling
+        // Create a proper copy
         this.editedDevice = {
             ...device,
-            availableStores: [...(device.availableStores || [])],
-            enabledStores: [...(device.enabledStores || [])],
-            availableSubscriptions: [...(device.availableSubscriptions || [])],
-            enabledSubscriptions: [...(device.enabledSubscriptions || [])]
+            platforms: [...device.platforms],
+            platformStores: JSON.parse(JSON.stringify(device.platformStores)),
+            platformSubscriptions: JSON.parse(JSON.stringify(device.platformSubscriptions))
         };
     }
 
@@ -1817,17 +2053,16 @@ class EditDeviceModal extends Modal {
                     this.editedDevice.name = value;
                 }));
 
-        // Available stores
-        this.addStoreManagement(contentEl);
-        
-        // Subscription management
-        this.addSubscriptionManagement(contentEl);
+        // Platform management
+        this.addPlatformManagement(contentEl);
 
         // Default device toggle
-        if (this.plugin.settings.userDevices.filter(d => d.basePlatform === this.device.basePlatform).length > 1) {
+        if (this.plugin.settings.userDevices.filter(d => 
+            d.platforms.some(p => this.editedDevice.platforms.includes(p))
+        ).length > 1) {
             new Setting(contentEl)
                 .setName('Default Device')
-                .setDesc(`Make this the default device for ${this.device.basePlatform} games`)
+                .setDesc(`Make this the default device for its platforms`)
                 .addToggle(toggle => toggle
                     .setValue(this.editedDevice.isDefault)
                     .onChange(value => {
@@ -1851,106 +2086,214 @@ class EditDeviceModal extends Modal {
             text: 'Save Changes',
             cls: 'mod-cta'
         });
-        
         saveButton.onclick = async () => {
             await this.saveChanges();
         };
     }
 
-    private addStoreManagement(containerEl: HTMLElement) {
-        containerEl.createEl('h4', { text: 'Available Stores' });
+    private addPlatformManagement(containerEl: HTMLElement) {
+        containerEl.createEl('h4', { text: 'Platforms & Features' });
+        
+        // Core platforms
+        containerEl.createEl('h5', { text: 'Core Platforms' });
         containerEl.createEl('p', {
-            text: 'Select which stores are available on this device:',
+            text: 'The main operating system(s) this device runs:',
             cls: 'setting-item-description'
         });
 
-        // Check if availableStores exists and has content
-        if (!this.editedDevice.availableStores || this.editedDevice.availableStores.length === 0) {
-            containerEl.createEl('p', {
-                text: 'No stores available for this device.',
-                cls: 'setting-item-description'
-            });
-            return;
-        }
-
-        // Create store toggles - only show compatible stores
-        const compatibleStores = this.editedDevice.availableStores.filter((store: string) => 
-            this.plugin.validateStoreDeviceCombination(store, this.editedDevice)
-        );
+        const corePlatforms = this.getCorePlatformsForDeviceType(this.editedDevice.type);
         
-        compatibleStores.forEach((store: string) => {
+        corePlatforms.forEach(platform => {
+            const isEnabled = this.editedDevice.platforms.includes(platform);
+            
             new Setting(containerEl)
-                .setName(store)
+                .setName(platform)
                 .addToggle(toggle => toggle
-                    .setValue(this.editedDevice.enabledStores.includes(store))
-                    .onChange((value: boolean) => {
+                    .setValue(isEnabled)
+                    .onChange(async (value) => {
                         if (value) {
-                            // Add store if not already enabled
-                            if (!this.editedDevice.enabledStores.includes(store)) {
-                                this.editedDevice.enabledStores.push(store);
+                            // Add platform
+                            if (!this.editedDevice.platforms.includes(platform)) {
+                                this.editedDevice.platforms.push(platform);
+                                this.editedDevice.platformStores[platform] = this.getDefaultStoresForPlatform(platform);
+                                this.editedDevice.platformSubscriptions[platform] = this.getDefaultSubscriptionsForPlatform(platform);
                             }
                         } else {
-                            // Remove store from enabled list
-                            this.editedDevice.enabledStores = this.editedDevice.enabledStores.filter(s => s !== store);
+                            // Remove platform (but don't allow removing the last core platform)
+                            const coreCount = this.editedDevice.platforms.filter(p => corePlatforms.includes(p)).length;
+                            if (coreCount > 1) {
+                                this.editedDevice.platforms = this.editedDevice.platforms.filter(p => p !== platform);
+                                delete this.editedDevice.platformStores[platform];
+                                delete this.editedDevice.platformSubscriptions[platform];
+                            } else {
+                                new Notice('Cannot remove the last core platform from a device');
+                                toggle.setValue(true);
+                            }
                         }
+                        this.refreshPlatformDetails(containerEl);
                     }));
         });
-        
-        // Show info about incompatible stores if any exist
-        const incompatibleStores = this.editedDevice.availableStores.filter((store: string) => 
-            !this.plugin.validateStoreDeviceCombination(store, this.editedDevice)
-        );
-        
-        if (incompatibleStores.length > 0) {
-            const infoEl = containerEl.createEl('p', {
-                cls: 'setting-item-description',
-                text: `⚠️ Incompatible stores removed: ${incompatibleStores.join(', ')}`
-            });
-            infoEl.style.color = 'var(--text-muted)';
+
+        // Emulation support
+        if (this.deviceSupportsEmulation(this.editedDevice.type)) {
+            containerEl.createEl('h5', { text: 'Additional Features' });
+            
+            const hasEmulation = this.editedDevice.platforms.includes('Emulation');
+            
+            new Setting(containerEl)
+                .setName('Emulation Support')
+                .setDesc('Enable if this device runs emulators for retro games')
+                .addToggle(toggle => toggle
+                    .setValue(hasEmulation)
+                    .onChange((value) => {
+                        if (value) {
+                            // Add emulation
+                            if (!this.editedDevice.platforms.includes('Emulation')) {
+                                this.editedDevice.platforms.push('Emulation');
+                                this.editedDevice.platformStores['Emulation'] = ['ROM Files', 'No Store'];
+                                this.editedDevice.platformSubscriptions['Emulation'] = [];
+                            }
+                        } else {
+                            // Remove emulation
+                            this.editedDevice.platforms = this.editedDevice.platforms.filter(p => p !== 'Emulation');
+                            delete this.editedDevice.platformStores['Emulation'];
+                            delete this.editedDevice.platformSubscriptions['Emulation'];
+                        }
+                        this.refreshPlatformDetails(containerEl);
+                    }));
         }
+
+        // Platform details section
+        const detailsContainer = containerEl.createDiv('platform-details-container');
+        detailsContainer.style.cssText = `
+            margin-top: 20px;
+        `;
+        
+        this.refreshPlatformDetails(containerEl);
     }
 
-    private addSubscriptionManagement(containerEl: HTMLElement) {
-        if (this.editedDevice.availableSubscriptions.length === 0) return;
+    private getCorePlatformsForDeviceType(deviceType: DeviceType): string[] {
+        const platformMap: Record<DeviceType, string[]> = {
+            computer: ['Windows', 'Mac', 'Linux', 'SteamOS'],
+            console: ['PlayStation', 'Xbox', 'Nintendo'],
+            handheld: ['Windows', 'SteamOS', 'Nintendo', 'iOS', 'Android'],
+            hybrid: ['Windows', 'SteamOS', 'Nintendo'],
+            mobile: ['iOS', 'Android'],
+            custom: ['Windows', 'Mac', 'Linux', 'PlayStation', 'Xbox', 'Nintendo', 'iOS', 'Android', 'Other']
+        };
         
-        containerEl.createEl('h4', { text: 'Available Subscriptions' });
-        containerEl.createEl('p', {
-            text: 'Select which subscriptions you use on this device:',
-            cls: 'setting-item-description'
-        });
+        return platformMap[deviceType] || [];
+    }
 
-        // Ensure availableSubscriptions is treated as string array
-        const availableSubscriptions = this.editedDevice.availableSubscriptions as string[];
+    private deviceSupportsEmulation(deviceType: DeviceType): boolean {
+        // Most modern devices can run emulators
+        return ['computer', 'handheld', 'mobile', 'custom'].includes(deviceType);
+    }
 
-        availableSubscriptions.forEach((subscription: string) => {
-            // Only show if the subscription is globally enabled
-            if (this.plugin.settings.enabledSubscriptions[subscription]) {
-                new Setting(containerEl)
-                    .setName(subscription)
-                    .addToggle(toggle => toggle
-                        .setValue(this.editedDevice.enabledSubscriptions.includes(subscription))
-                        .onChange((value: boolean) => {
-                            const enabledSubscriptions = this.editedDevice.enabledSubscriptions as string[];
-                            
-                            if (value) {
-                                if (!enabledSubscriptions.includes(subscription)) {
-                                    enabledSubscriptions.push(subscription);
-                                }
-                            } else {
-                                this.editedDevice.enabledSubscriptions = enabledSubscriptions.filter((s: string) => s !== subscription);
-                            }
-                        }));
+    private refreshPlatformDetails(containerEl: HTMLElement) {
+        const detailsContainer = containerEl.querySelector('.platform-details-container') as HTMLElement;
+        if (!detailsContainer) return;
+        
+        detailsContainer.empty();
+        
+        if (this.editedDevice.platforms.length === 0) return;
+        
+        detailsContainer.createEl('h5', { text: 'Platform Details' });
+        
+        this.editedDevice.platforms.forEach(platform => {
+            const platformSection = detailsContainer.createDiv();
+            platformSection.style.cssText = `
+                margin: 15px 0;
+                padding: 15px;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                background: var(--background-secondary);
+            `;
+            
+            platformSection.createEl('h6', { text: platform });
+            
+            // Stores for this platform
+            const stores = this.editedDevice.platformStores[platform] || [];
+            if (stores.length > 0) {
+                const storesText = platformSection.createEl('p');
+                storesText.innerHTML = `<strong>Stores:</strong> ${stores.join(', ')}`;
+                storesText.style.marginBottom = '8px';
             }
+            
+            // Subscriptions for this platform
+            const subs = this.editedDevice.platformSubscriptions[platform] || [];
+            if (subs.length > 0) {
+                const subsText = platformSection.createEl('p');
+                subsText.innerHTML = `<strong>Subscriptions:</strong> ${subs.join(', ')}`;
+                subsText.style.marginBottom = '8px';
+            }
+            
+            // Note about store/subscription management
+            const note = platformSection.createEl('p');
+            note.style.cssText = `
+                font-size: 0.8em;
+                color: var(--text-muted);
+                font-style: italic;
+                margin: 0;
+            `;
+            note.textContent = 'Stores and subscriptions are managed globally in the main settings.';
         });
+    }
+
+    private getAvailablePlatformsForDeviceType(deviceType: DeviceType): string[] {
+        const platformMap: Record<DeviceType, string[]> = {
+            computer: ['Windows', 'Mac', 'Linux', 'SteamOS'],
+            console: ['PlayStation', 'Xbox', 'Nintendo', 'Retro'],
+            handheld: ['Windows', 'SteamOS', 'Nintendo', 'iOS', 'Android'],
+            hybrid: ['Windows', 'SteamOS', 'Nintendo'],
+            mobile: ['iOS', 'Android'],
+            custom: ['Windows', 'Mac', 'Linux', 'PlayStation', 'Xbox', 'Nintendo', 'Retro', 'Emulation', 'Other']
+        };
+        
+        return platformMap[deviceType] || [];
+    }
+
+    private getDefaultStoresForPlatform(platform: string): string[] {
+        if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(platform)) {
+            // For PC platforms, get currently enabled stores
+            const pcDevices = this.plugin.settings.userDevices.filter(d => 
+                d.platforms.some(p => ['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(p))
+            );
+            
+            if (pcDevices.length > 0) {
+                const enabledStores = new Set<string>();
+                pcDevices.forEach(device => {
+                    device.platforms.forEach(devicePlatform => {
+                        if (['PC', 'Windows', 'Mac', 'Linux', 'SteamOS'].includes(devicePlatform)) {
+                            if (device.platformStores[devicePlatform]) {
+                                device.platformStores[devicePlatform].forEach(store => enabledStores.add(store));
+                            }
+                        }
+                    });
+                });
+                return Array.from(enabledStores);
+            }
+        }
+        
+        // Use the plugin's method for getting compatible stores
+        return this.plugin.getCompatibleStoresForPlatform(platform);
+    }
+
+    private getDefaultSubscriptionsForPlatform(platform: string): string[] {
+        const availableSubscriptions = this.plugin.getSubscriptionsForPlatform(platform);
+        return availableSubscriptions.filter(sub => 
+            this.plugin.settings.enabledSubscriptions[sub] === true
+        );
     }
 
     private async saveChanges() {
         try {
             // Handle default device logic
             if (this.editedDevice.isDefault && !this.device.isDefault) {
-                // Making this device default - remove default from others with same platform
+                // Making this device default - remove default from others with overlapping platforms
                 this.plugin.settings.userDevices.forEach(device => {
-                    if (device.basePlatform === this.editedDevice.basePlatform && device.id !== this.editedDevice.id) {
+                    if (device.id !== this.editedDevice.id && 
+                        device.platforms.some(p => this.editedDevice.platforms.includes(p))) {
                         device.isDefault = false;
                     }
                 });
