@@ -2021,7 +2021,7 @@ class ShareNotesModal extends Modal {
             formatted += `Plans for next time:\n${cleanPlans}\n\n`;
         }
         
-        formatted += `---\nShared from Apostrophe's Game Log`;
+        formatted += `---\nShared from Obsidian Game Log`;
         
         return formatted;
     }
@@ -2039,7 +2039,7 @@ class ShareNotesModal extends Modal {
             formatted += `**Plans for next time:**\n${notesForNext.trim()}\n\n`;
         }
         
-        formatted += `*Shared from Apostrophe's Game Log*`;
+        formatted += `*Shared from Obsidian Game Log*`;
         
         return formatted;
     }
